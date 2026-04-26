@@ -179,10 +179,16 @@ async def research_band(band_name: str) -> str:
     }
 
     async with httpx.AsyncClient(timeout=60) as client:
-        resp = await client.post(OPENROUTER_URL, json=payload, headers=headers)
-        resp.raise_for_status()
-        data = resp.json()
-        return data["choices"][0]["message"]["content"].strip()
+        for attempt in range(10):
+            resp = await client.post(OPENROUTER_URL, json=payload, headers=headers)
+            if resp.status_code == 429:
+                wait = 5 * (attempt + 1)
+                logging.warning("Rate limited (429), retrying in %ds (attempt %d/10)", wait, attempt + 1)
+                await asyncio.sleep(wait)
+                continue
+            resp.raise_for_status()
+            return resp.json()["choices"][0]["message"]["content"].strip()
+        resp.raise_for_status()  # raise after exhausting all retries
 
 
 # =============================================================================
